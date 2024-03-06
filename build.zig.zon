@@ -1,0 +1,10 @@
+.{
+	.name = "lhapdf_fortrajectum",
+	.version = "6.5.4",
+	.dependencies = .{
+		.yaml_cpp_fortrajectum = .{
+			.url = "https://github.com/smups/yaml-cpp-fortrajectum/archive/refs/tags/v0.8.0-zig003.tar.gz",
+			.hash = "122047a65e83583ffcfb7cbc1c86b98b1759ab7b20cc3c4c0b503d1fb6f91318b024"
+		},
+	},
+}
