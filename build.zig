@@ -20,6 +20,7 @@ const pdfs = [_][]const u8 {
     const optimize = b.standardOptimizeOption(.{});
 
     // Add option to set the data directory for LHAPDF
+    const root_dir = b.build_root.handle;
     const usr_ddir_path = b.option([]const u8, "data-dir", "");
     const install_pdfs = b.option(bool, "download-pdfs", "") orelse false;
 
@@ -34,9 +35,9 @@ const pdfs = [_][]const u8 {
                 return err;
             };
         } else {
-            break :blk std.fs.cwd().makeOpenPath(default_ddir, .{}) catch |err| {
+            break :blk root_dir.makeOpenPath(default_ddir, .{}) catch |err| {
                  std.debug.print("Could not open default data-dir {s}. Err: \"{s}\"\n", .{
-                    try std.fs.cwd().realpathAlloc(alloc, default_ddir), @errorName(err)
+                    try root_dir.realpathAlloc(alloc, default_ddir), @errorName(err)
                 });
                 return err;
             };
@@ -76,7 +77,7 @@ const pdfs = [_][]const u8 {
     lhapdf.addIncludePath(.{ .path = yaml_cpp.builder.h_dir });
 
     // Add source files
-    const cpp_src = try list_cpp_src(alloc, "src/");
+    const cpp_src = try list_cpp_src(alloc, try root_dir.openDir("src/", .{}));
     const cpp_flags = &.{
         "-std=c++11",
         try std.fmt.allocPrint(alloc, "-DLHAPDF_DATA_PREFIX=\"{s}\"", .{ ddir_path })
@@ -93,17 +94,14 @@ const pdfs = [_][]const u8 {
 
 /// This function traverses the `src_dir` and produces an `ArrayList` of all
 /// non-main source files in the `src_dir`.
-fn list_cpp_src(alloc: Allocator, src_dir: []const u8) !std.ArrayList([]u8) {
+fn list_cpp_src(alloc: Allocator, src_dir: std.fs.Dir) !std.ArrayList([]u8) {
     var source_files = std.ArrayList([]u8).init(alloc);
-    var walker = (try std.fs.cwd().openIterableDir(src_dir, .{})).iterate();
+    var walker = (try src_dir.openIterableDir(".", .{})).iterate();
     while (try walker.next()) |entry| {
         if (!std.mem.endsWith(u8, entry.name, ".cc")) {
             continue;
         }
-        var source_path = std.ArrayList(u8).init(alloc);
-        try source_path.appendSlice(src_dir);
-        try source_path.appendSlice(entry.name);
-        try source_files.append(try source_path.toOwnedSlice());
+        try source_files.append(try src_dir.realpathAlloc(alloc, entry.name));
     }
     return source_files;
 }
