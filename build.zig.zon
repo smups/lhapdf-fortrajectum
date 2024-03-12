@@ -1,6 +1,6 @@
 .{
 	.name = "lhapdf_fortrajectum",
-	.version = "6.5.4",
+	.version = "6.5.4-alpha",
 	.dependencies = .{
 		.yaml_cpp_fortrajectum = .{
 			.url = "https://github.com/smups/yaml-cpp-fortrajectum/archive/refs/tags/v0.8.0-zig003.tar.gz",

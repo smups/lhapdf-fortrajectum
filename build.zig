@@ -1,11 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const pdf_install_prefix = "share/";
-const default_install_dir = "lhapdf-data/";
-const default_install_dir_share = "lhapdf-data/share/";
-const pdf_url_prefix = "https://lhapdfsets.web.cern.ch/current/";
-const pdf_url_suffix = ".tar.gz";
+const default_ddir = "ddir";
+const pdf_dir_rel = "LHAPDF"; //<- fixed in the cpp source!
+
+const pdf_svr_baseurl = "https://lhapdfsets.web.cern.ch/current/";
 const pdfs = [_][]const u8 {
     "EPPS21nlo_CT18Anlo_O16",
     "EPPS21nlo_CT18Anlo_Pb208"
@@ -21,35 +20,39 @@ const pdfs = [_][]const u8 {
     const optimize = b.standardOptimizeOption(.{});
 
     // Add option to set the data directory for LHAPDF
-    const data_dir_path = b.option([]const u8, "data-dir", "");
+    const usr_ddir_path = b.option([]const u8, "data-dir", "");
     const install_pdfs = b.option(bool, "download-pdfs", "") orelse false;
 
-    const data_dir = blk: {
-        // Try to open user-supplied directory
-        if (data_dir_path) |usr_data_dir_path| {
-            const data_dir = std.fs.openDirAbsolute(usr_data_dir_path, .{}) catch |err| {
-                std.debug.print("Could not open data_dir (path: \"{s}\"). Error: {s}\n", .{
-                    usr_data_dir_path, @errorName(err)
+    // `ddir` is the root folder where all LHAPDF data is stored. `ddir/phf_dir` contains the actual
+    // pdfs. If the user does not 
+    const ddir = blk: {
+        if (usr_ddir_path) |path| {
+            break :blk std.fs.openDirAbsolute(path, .{}) catch |err| {
+                std.debug.print("Could not open data-dir {s} (is it an absolute path?) Err: \"{s}\"\n", .{
+                    path, @errorName(err)
                 });
-                return;
+                return err;
             };
-            data_dir.makeDir(pdf_install_prefix) catch |err| switch (err) {
-                error.PathAlreadyExists => {},
-                else => std.debug.print("Could not create dir {s}. Error: {s}", .{
-                    try data_dir.realpathAlloc(alloc, pdf_install_prefix), @errorName(err) 
-                })               
+        } else {
+            break :blk std.fs.cwd().makeOpenPath(default_ddir, .{}) catch |err| {
+                 std.debug.print("Could not open default data-dir {s}. Err: \"{s}\"\n", .{
+                    try std.fs.cwd().realpathAlloc(alloc, default_ddir), @errorName(err)
+                });
+                return err;
             };
-            // Everything is perfect!
-            break :blk data_dir.openDir(pdf_install_prefix, .{}) catch unreachable;
         }
-        // The user did not specify a directory, we will make one ourselves
-        const cwd = std.fs.cwd();
-        try cwd.makePath(default_install_dir_share);
-        break :blk try cwd.openDir(default_install_dir, .{});
     };
+    const pdf_dir = ddir.makeOpenPath(pdf_dir_rel, .{}) catch |err| {
+        std.debug.print("Could not open pdf-dir {s}. Err: \"{s}\"", .{
+            try ddir.realpathAlloc(alloc, pdf_dir_rel), @errorName(err)
+        });
+        return err;
+    };
+    const ddir_path = try ddir.realpathAlloc(alloc, ".",);
+    defer alloc.free(ddir_path);
 
     if (install_pdfs) {
-         try download_pdfs(alloc, data_dir);
+         try download_pdfs(alloc, pdf_dir);
     }
 
     // Load dependencies
@@ -74,7 +77,10 @@ const pdfs = [_][]const u8 {
 
     // Add source files
     const cpp_src = try list_cpp_src(alloc, "src/");
-    const cpp_flags = &.{"-std=c++11"};
+    const cpp_flags = &.{
+        "-std=c++11",
+        try std.fmt.allocPrint(alloc, "-DLHAPDF_DATA_PREFIX=\"{s}\"", .{ ddir_path })
+    };
     lhapdf_cpp.addCSourceFiles(cpp_src.items, cpp_flags);
 
     // Install headers
@@ -102,7 +108,7 @@ fn list_cpp_src(alloc: Allocator, src_dir: []const u8) !std.ArrayList([]u8) {
     return source_files;
 }
 
-fn download_pdfs(alloc: Allocator, install_dir: std.fs.Dir) !void {
+fn download_pdfs(alloc: Allocator, pdf_dir: std.fs.Dir) !void {
     var client = std.http.Client { .allocator = alloc };
     defer client.deinit();
 
@@ -112,38 +118,23 @@ fn download_pdfs(alloc: Allocator, install_dir: std.fs.Dir) !void {
     
     for (pdfs) |pdf_name| {        
         // Generate the uri to the .tar.gz file on the CERN server
-        const url_len = pdf_name.len + pdf_url_suffix.len + pdf_url_prefix.len;
-        var url = try std.ArrayList(u8).initCapacity(alloc, url_len);
-        defer url.deinit();
-        try url.appendSlice(pdf_url_prefix);
-        try url.appendSlice(pdf_name);
-        try url.appendSlice(pdf_url_suffix);
-        const uri = try std.Uri.parse(url.items);
-        
-        std.debug.print("Downloading {s}. This could take a while...\n", .{url.items});
+        const url = try std.fmt.allocPrint(alloc, "{s}{s}.tar.gz", .{ pdf_svr_baseurl, pdf_name });
+        defer alloc.free(url);
+        const uri = try std.Uri.parse(url);        
+        std.debug.print("Downloading {s}. This could take a while...\n", .{url});
 
         //Make the request
         var req = try client.request(std.http.Method.GET, uri, headers, .{});
         try req.start();
         try req.wait();
         const buf = try req.reader().readAllAlloc(alloc, std.math.maxInt(usize));
-
         std.debug.print("Finished downloading {s}. Received {} bytes.\n", .{pdf_name, buf.len});
 
         //  Write file to disk
-        const path_len = pdf_install_prefix.len + pdf_install_prefix.len + pdf_url_suffix.len;
-        var install_path = try std.ArrayList(u8).initCapacity(alloc, path_len);
-        defer install_path.deinit();
-        try install_path.appendSlice(pdf_install_prefix);
-        try install_path.appendSlice(pdf_name);
-        try install_path.appendSlice(pdf_url_suffix);
-        const out_file = try std.fs.Dir.createFile(install_dir, install_path.items, .{});
+        const fout_name = try std.fmt.allocPrint(alloc, "{s}.tar.gz", .{ pdf_name });
+        defer alloc.free(fout_name);
+        const out_file = try std.fs.Dir.createFile(pdf_dir, fout_name, .{});
         defer out_file.close();
         try out_file.writeAll(buf);
-
-        std.debug.print("Installed {s}. Path: {s}\n", .{
-            pdf_name,
-            try install_dir.realpathAlloc(alloc, install_path.items) 
-        });
     }
 }
