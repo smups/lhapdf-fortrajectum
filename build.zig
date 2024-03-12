@@ -56,24 +56,24 @@ const pdfs = [_][]const u8 {
     }
 
     // Load dependencies
-    const yaml_cpp = b.dependency("yaml_cpp_fortrajectum", .{
+    const yaml = b.dependency("yaml_fortrajectum", .{
         .target = target,
         .optimize = optimize
     });
 
     // Create compiled static library
-    const lhapdf_cpp = b.addStaticLibrary(.{
-        .name = "lhapdf-cpp-fortrajectum",
+    const lhapdf = b.addStaticLibrary(.{
+        .name = "lhapdf-fortrajectum",
         .target = target,
         .optimize = optimize 
     });
 
     // Add dependency on yaml-cpp
-    lhapdf_cpp.linkLibrary(yaml_cpp.artifact("yaml-cpp-fortrajectum"));
+    lhapdf.linkLibrary(yaml.artifact("yaml-cpp-fortrajectum"));
 
     // Add headers
-    lhapdf_cpp.addIncludePath(.{ .path = "include/" });
-    lhapdf_cpp.addIncludePath(.{ .path = yaml_cpp.builder.h_dir });
+    lhapdf.addIncludePath(.{ .path = "include/" });
+    lhapdf.addIncludePath(.{ .path = yaml.builder.h_dir });
 
     // Add source files
     const cpp_src = try list_cpp_src(alloc, "src/");
@@ -81,13 +81,13 @@ const pdfs = [_][]const u8 {
         "-std=c++11",
         try std.fmt.allocPrint(alloc, "-DLHAPDF_DATA_PREFIX=\"{s}\"", .{ ddir_path })
     };
-    lhapdf_cpp.addCSourceFiles(cpp_src.items, cpp_flags);
+    lhapdf.addCSourceFiles(cpp_src.items, cpp_flags);
 
     // Install headers
-    lhapdf_cpp.installHeadersDirectory("include", "");
+    lhapdf.installHeadersDirectory("include", "");
 
     //Install artifacts
-    b.installArtifact(lhapdf_cpp);
+    b.installArtifact(lhapdf);
 }
 
 
