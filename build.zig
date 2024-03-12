@@ -56,7 +56,7 @@ const pdfs = [_][]const u8 {
     }
 
     // Load dependencies
-    const yaml = b.dependency("yaml_fortrajectum", .{
+    const yaml_cpp = b.dependency("yaml_cpp_fortrajectum", .{
         .target = target,
         .optimize = optimize
     });
@@ -69,11 +69,11 @@ const pdfs = [_][]const u8 {
     });
 
     // Add dependency on yaml-cpp
-    lhapdf.linkLibrary(yaml.artifact("yaml-cpp-fortrajectum"));
+    lhapdf.linkLibrary(yaml_cpp.artifact("yaml-cpp-fortrajectum"));
 
     // Add headers
     lhapdf.addIncludePath(.{ .path = "include/" });
-    lhapdf.addIncludePath(.{ .path = yaml.builder.h_dir });
+    lhapdf.addIncludePath(.{ .path = yaml_cpp.builder.h_dir });
 
     // Add source files
     const cpp_src = try list_cpp_src(alloc, "src/");
