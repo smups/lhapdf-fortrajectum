@@ -3,8 +3,8 @@
 	.version = "6.5.4-alpha",
 	.dependencies = .{
 		.yaml_cpp_fortrajectum = .{
-			.url = "https://github.com/smups/yaml-cpp-fortrajectum/archive/refs/tags/v0.8.0-zig003.tar.gz",
-			.hash = "122047a65e83583ffcfb7cbc1c86b98b1759ab7b20cc3c4c0b503d1fb6f91318b024"
+			.url = "https://github.com/smups/yaml-cpp-fortrajectum/archive/refs/tags/v0.8.0-alpha1.tar.gz",
+			.hash = "122094bd8321d373b77baea730f5d769e24c45f2266fd279e9f0fa69c7ff081746bd"
 		},
 	},
 	.paths = .{
