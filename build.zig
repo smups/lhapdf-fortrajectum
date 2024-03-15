@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const default_ddir = "ddir";
+const default_ddir = "lhapdf-data";
 const pdf_dir_rel = "LHAPDF"; //<- fixed in the cpp source!
 
 const pdf_svr_baseurl = "https://lhapdfsets.web.cern.ch/current/";
