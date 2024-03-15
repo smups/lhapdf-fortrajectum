@@ -2,7 +2,7 @@
 	.name = "lhapdf_fortrajectum",
 	.version = "6.5.4-alpha",
 	.dependencies = .{
-		.yaml_cpp_fortrajectum = .{
+		.yamlcpp = .{
 			.url = "https://github.com/smups/yaml-cpp-fortrajectum/archive/refs/tags/v0.8.0-alpha1.tar.gz",
 			.hash = "122094bd8321d373b77baea730f5d769e24c45f2266fd279e9f0fa69c7ff081746bd"
 		},
@@ -10,6 +10,8 @@
 	.paths = .{
 		"src",
 		"include",
+		"lhapdf.conf",
+		"pdfsets.index",
 		"build.zig",
 		"build.zig.zon"
 	}
