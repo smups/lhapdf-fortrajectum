@@ -10,6 +10,34 @@ const pdfs = [_][]const u8 {
     "EPPS21nlo_CT18Anlo_Pb208"
 };
 
+const cpp_src = &.{
+    "src/AlphaS_Analytic.cc",
+    "src/AlphaS.cc",
+    "src/AlphaS_Ipol.cc",
+    "src/AlphaS_ODE.cc",
+    "src/BicubicInterpolator.cc",
+    "src/BilinearInterpolator.cc",
+    "src/Config.cc",
+    "src/ContinuationExtrapolator.cc",
+    "src/ErrExtrapolator.cc",
+    "src/Factories.cc",
+    "src/FileIO.cc",
+    "src/GridPDF.cc",
+    "src/Info.cc",
+    "src/Interpolator.cc",
+    "src/KnotArray.cc",
+    "src/LHAGlue.cc",
+    "src/LogBicubicInterpolator.cc",
+    "src/LogBilinearInterpolator.cc",
+    "src/NearestPointExtrapolator.cc",
+    "src/Paths.cc",
+    "src/PDF.cc",
+    "src/PDFIndex.cc",
+    "src/PDFInfo.cc",
+    "src/PDFSet.cc",
+    "src/Utils.cc",
+};
+
  pub fn build(b: *std.Build) !void {
     // Initialise allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -49,18 +77,17 @@ const pdfs = [_][]const u8 {
     lhapdf.linkLibrary(yamlcpp.artifact("yaml-cpp-fortrajectum"));
 
     // Add headers
-    lhapdf.addIncludePath(.{ .path = "include/" });
+    lhapdf.addIncludePath(b.path("include"));
 
     // Add source files
-    const cpp_src = try list_cpp_src(alloc, try root_dir.openDir("src/", .{}));
     const cpp_flags = &.{
         "-std=c++11",
         b.fmt("-DLHAPDF_DATA_PREFIX=\"{s}\"", .{ ddir_path })
     };
-    lhapdf.addCSourceFiles(cpp_src.items, cpp_flags);
+    lhapdf.addCSourceFiles(.{.files = cpp_src, .flags = cpp_flags });
 
     // Install headers
-    lhapdf.installHeadersDirectory("include", "");
+    lhapdf.installHeadersDirectory(b.path("include"), "", .{});
 
     //Install artifacts
     b.installArtifact(lhapdf);
@@ -120,28 +147,10 @@ fn init_pdfdir(alloc: Allocator, root: std.fs.Dir, ddir_path: []const u8) ![]con
     return try pdf_dir.realpathAlloc(alloc, ".");
 }
 
-/// This function traverses the `src_dir` and produces an `ArrayList` of all
-/// non-main source files in the `src_dir`.
-fn list_cpp_src(alloc: Allocator, src_dir: std.fs.Dir) !std.ArrayList([]u8) {
-    var source_files = std.ArrayList([]u8).init(alloc);
-    var walker = (try src_dir.openIterableDir(".", .{})).iterate();
-    while (try walker.next()) |entry| {
-        if (!std.mem.endsWith(u8, entry.name, ".cc")) {
-            continue;
-        }
-        try source_files.append(try src_dir.realpathAlloc(alloc, entry.name));
-    }    
-    return source_files;
-}
-
 fn download_pdfs(alloc: Allocator, pdf_dir: std.fs.Dir) !void {
     var client = std.http.Client { .allocator = alloc };
     defer client.deinit();
 
-    var headers = std.http.Headers.init(alloc);
-    defer headers.deinit();
-    try headers.append("accept", "*/*");
-    
     const pdf_dir_path = try pdf_dir.realpathAlloc(alloc, ".");
     defer alloc.free(pdf_dir_path);      
     
@@ -149,22 +158,26 @@ fn download_pdfs(alloc: Allocator, pdf_dir: std.fs.Dir) !void {
         // Generate the uri to the .tar.gz file on the CERN server
         const url = try std.fmt.allocPrint(alloc, "{s}{s}.tar.gz", .{ pdf_svr_baseurl, pdf_name });
         defer alloc.free(url);
-        const uri = try std.Uri.parse(url);        
         std.debug.print("[📥] Downloading {s}. This could take a while...\n", .{url});
 
         //Make the request
-        var req = try client.request(std.http.Method.GET, uri, headers, .{});
-        try req.start();
-        try req.wait();
-        const httpreader = req.reader();
-
+        var response_buffer = std.ArrayList(u8).init(alloc);
+        response_buffer.deinit();
+        
+        _ = try client.fetch(.{
+            .method = std.http.Method.GET,
+            .location = .{ .url = url },
+            .response_storage = .{ .dynamic = &response_buffer },
+            .max_append_size = 1_000_000_000
+        });
+        
         // Decompress the file
         std.debug.print("[📂] Decompressing...\n", .{});
-        var decompressed_reader = try std.compress.gzip.decompress(alloc, httpreader);
-        defer decompressed_reader.deinit();
-
+        var buffer_stream = std.io.fixedBufferStream(response_buffer.items);
+        var decomp = std.compress.gzip.decompressor(buffer_stream.reader());
+        
         // Write to file system
-        try std.tar.pipeToFileSystem(pdf_dir, decompressed_reader.reader(), .{ .mode_mode = .ignore });
+        try std.tar.pipeToFileSystem(pdf_dir, &decomp.reader(), .{ .mode_mode = .ignore });
       
         std.debug.print("[✔️] Installed PDF \"{s}\" to {s}\n", .{ pdf_name, pdf_dir_path });
     }
